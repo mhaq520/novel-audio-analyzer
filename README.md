@@ -6,7 +6,7 @@
 
 - **批量音频处理** — 支持 MP3 / WAV / M4A / FLAC / AAC / OGG 格式，单文件支持 ≥1 小时
 - **本地 ASR 转写** — 基于 faster-whisper + CTranslate2，利用 GPU 加速，支持中文语音识别
-- **LLM 智能分析** — 调用 Qwen2.5-7B-Instruct（4-bit 量化）自动生成剧情摘要与行为关键词
+- **LLM 智能分析** — 调用 DarkIdol-Llama-3.1-8B-Instruct-1.2-Uncensored（4-bit 量化）自动生成剧情摘要与行为关键词
 - **转写缓存** — 以文件名+修改时间为 Key 缓存 ASR 结果，相同文件重复处理时跳过识别(未完成)
 - **结果输出** — 每条音频的分析结果保存为独立 `.txt` 文件，统一存放于 `output/` 目录
 - **Web GUI** — Flask 提供简洁界面，支持拖拽上传、进度展示、日志输出、结果下载
