@@ -49,14 +49,11 @@ $env:HF_ENDPOINT = "https://hf-mirror.com"
 uv run python -c "from faster_whisper.utils import download_model; download_model('large-v3', output_dir='./models/whisper-ct2')"
 ```
 
-**LLM 模型（Qwen2.5-7B-Instruct）**
+**LLM 模型（DarkIdol-Llama-3.1-8B-Instruct-1.2-Uncensored）**
 
-```bash
-# 安装 modelscope
-pip install modelscope
-
-# 下载完整模型库
-modelscope download --model Qwen/Qwen2.5-7B-Instruct --local_dir ./models/qwen2.5-7b
+```powershell
+$env:HF_ENDPOINT = "https://hf-mirror.com"
+huggingface-cli download --resume-download aifeifei798/DarkIdol-Llama-3.1-8B-Instruct-1.2-Uncensored --local-dir ./models/DarkIdol-Llama-3.1-8B-Instruct-1.2-Uncensored
 ```
 
 ### 3. 启动系统

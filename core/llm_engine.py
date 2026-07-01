@@ -1,7 +1,8 @@
-import torch
+﻿import torch
+import re
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
-MODEL_PATH = "./models/qwen2.5-7b"
+MODEL_PATH = "./models/DarkIdol-Llama-3.1-8B-Instruct-1.2-Uncensored"
 
 _llm_model = None
 _tokenizer = None
@@ -10,7 +11,6 @@ _tokenizer = None
 def load_llm():
     global _llm_model, _tokenizer
     if _llm_model is None:
-        # 强制设置设备并打印信息
         torch.cuda.set_device(0)
         print(f"显存状态（加载前）: {torch.cuda.memory_summary()}")
         print("加载 LLM 4-bit 模型...")
@@ -40,19 +40,15 @@ def analyze_text(text: str):
     if len(text) > max_len:
         text = text[:max_len] + "..."
 
-    prompt = f"""请根据以下小说剧本的转写文本，生成：
-1. 剧情总结（故事主线与关键情节，200字以内）
-2. 行为关键词（人物动作、事件标签，如"逃亡""对峙""密谋"，列出5-8个）
+    prompt = f"""根据文本生成摘要和行为关键词。
 
-文本内容：
-{text}
+文本：{text}
 
-输出格式（必须严格遵守）：
-摘要：...
-关键词：词1, 词2, 词3, ...
-"""
+输出：
+摘要："""
 
     inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=4096)
+    input_len = inputs.input_ids.shape[1]
     inputs = {k: v.to(model.device) for k, v in inputs.items()}
 
     with torch.no_grad():
@@ -62,31 +58,36 @@ def analyze_text(text: str):
             temperature=0.7,
             do_sample=True,
             pad_token_id=tokenizer.eos_token_id,
-            # 移除 min_new_tokens，避免版本兼容问题
         )
 
-    result = tokenizer.decode(outputs[0], skip_special_tokens=True)
+    result = tokenizer.decode(outputs[0][input_len:], skip_special_tokens=True)
     print("\n===== 模型原始输出 =====\n", result, "\n=========================\n")
 
-    # 解析摘要（更宽容）
+    # 按行为关键词/关键词/关键点切分
     summary = ""
     keywords = []
-    lines = result.split('\n')
-    for line in lines:
-        line = line.strip()
-        if line.startswith("摘要：") or line.startswith("摘要:"):
-            summary = line.split("：")[-1].split(":")[-1].strip()
-        elif line.startswith("关键词：") or line.startswith("关键词:"):
-            kw_part = line.split("：")[-1].split(":")[-1].strip()
-            keywords = [kw.strip() for kw in kw_part.split(",") if kw.strip()]
+    for sep in ["\n关键词", "\n行为关键词", "\n关键点"]:
+        if sep in result:
+            parts = result.split(sep, maxsplit=1)
+            summary = parts[0].strip()
+            # 取关键词行，去掉末尾垃圾字符
+            kw_text = parts[1].split("\n")[0]
+            kw_text = re.sub(r'^[：:]\s*', '', kw_text)
+            kw_text = re.sub(r'\s*[\[<\]>].*$', '', kw_text)  # 清除垃圾后缀
+            items = re.split(r'[、,，]\s*', kw_text)
+            keywords = [kw.strip().rstrip("。") for kw in items if kw.strip() and len(kw.strip()) <= 20]
+            break
 
-    # 如果仍然无效，取整个输出的前200字符作为摘要
     if not summary:
-        summary = result[:200] if len(result) > 200 else result
-        summary = summary.replace("摘要：", "").replace("摘要:", "").strip()
-        if not summary:
-            summary = "（模型未生成有效摘要，请检查音频内容）"
+        summary = result.strip()[:300]
 
+    if not keywords:
+        match = re.search(r'(?:关键词|行为关键词)[：:]\s*(.+?)(?:\n|$)', result)
+        if match:
+            kw_text = match.group(1).strip()
+            kw_text = re.sub(r'\s*[\[<\]>].*$', '', kw_text)
+            items = re.split(r'[、,，]\s*', kw_text)
+            keywords = [kw.strip().rstrip("。") for kw in items if kw.strip() and len(kw.strip()) <= 20]
     if not keywords:
         keywords = ["关键词提取失败"]
 
