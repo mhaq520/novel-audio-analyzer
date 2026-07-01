@@ -1,5 +1,4 @@
 ﻿import torch
-import json
 import re
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
@@ -41,11 +40,11 @@ def analyze_text(text: str):
     if len(text) > max_len:
         text = text[:max_len] + "..."
 
-    prompt = f"""根据文本生成摘要和行为关键词，只输出JSON。
+    prompt = f"""以下是一部小说的转写文本，请用一段话概括剧情，再列出5-8个行为关键词。
 
 文本：{text}
 
-{{"摘要":"""
+摘要："""
 
     inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=4096)
     input_len = inputs.input_ids.shape[1]
@@ -63,31 +62,31 @@ def analyze_text(text: str):
     result = tokenizer.decode(outputs[0][input_len:], skip_special_tokens=True)
     print("\n===== 模型原始输出 =====\n", result, "\n=========================\n")
 
-    # 补全 prompt 开头，构造完整 JSON
-    full = '{"摘要":' + result.strip()
-    json_match = re.search(r'\{.*"关键词".*\}|\{.*"行为关键词".*\}', full, re.DOTALL)
-    if json_match:
-        try:
-            data = json.loads(json_match.group())
-            summary = data.get("摘要", "")
-            keywords = data.get("行为关键词", data.get("关键词", []))
-            if keywords:
-                return summary, keywords
-        except json.JSONDecodeError:
-            pass
-
-    # JSON 不行就简单行匹配
     summary = ""
     keywords = []
-    lines = result.strip().split('\n')
-    for line in lines:
-        if "关键词" in line or "行为关键词" in line:
-            parts = re.split(r'[：:]\s*', line, maxsplit=1)
-            if len(parts) > 1:
-                kw_text = parts[1].strip().rstrip("}")
-                kw_text = re.sub(r'[\[\]"」』]', '', kw_text)
-                keywords = [kw.strip() for kw in re.split(r'[、,，]\s*', kw_text) if kw.strip() and len(kw.strip()) <= 20]
-                break
+
+    for sep in ["行为关键词", "关键词"]:
+        if sep in result:
+            parts = result.split(sep, maxsplit=1)
+            summary = parts[0].strip()
+
+            kw_block = parts[1].strip()
+            kw_block = re.sub(r'^[：:\s\n\r]*', '', kw_block)
+            kw_block = kw_block.split('\n\n')[0] if '\n\n' in kw_block else kw_block
+
+            found = []
+            for line in kw_block.strip().split('\n'):
+                line = line.strip()
+                if not line:
+                    continue
+                kw = re.sub(r'^\s*\d+\s*[.、)）\s]\s*', '', line)
+                kw = kw.split('。')[0].strip()
+                if kw and len(kw) <= 20 and kw not in found:
+                    found.append(kw)
+
+            keywords = found if len(found) >= 2 else [kw.strip() for kw in re.split(r'[、，,]', kw_block) if kw.strip() and len(kw.strip()) <= 20]
+            break
+
     if not summary:
         summary = result.strip()[:300]
     if not keywords:
@@ -96,7 +95,6 @@ def analyze_text(text: str):
     return summary, keywords
 
 def release_llm():
-    """释放 LLM 显存"""
     global _llm_model, _tokenizer
     if _llm_model is not None:
         del _llm_model
