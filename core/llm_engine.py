@@ -1,4 +1,4 @@
-﻿import torch
+import torch
 import re
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
@@ -36,9 +36,10 @@ def load_llm():
 def analyze_text(text: str):
     model, tokenizer = load_llm()
 
+    # 修改4：截断改为头尾各取 1000 字
     max_len = 2000
     if len(text) > max_len:
-        text = text[:max_len] + "..."
+        text = text[:1000] + "\n...(省略中段)...\n" + text[-1000:]
 
     prompt = f"""以下是一部小说的转写文本，请用一段话概括剧情，再列出5-8个行为关键词。
 
@@ -50,17 +51,28 @@ def analyze_text(text: str):
     input_len = inputs.input_ids.shape[1]
     inputs = {k: v.to(model.device) for k, v in inputs.items()}
 
-    with torch.no_grad():
-        outputs = model.generate(
-            **inputs,
-            max_new_tokens=512,
-            temperature=0.7,
-            do_sample=True,
-            pad_token_id=tokenizer.eos_token_id,
-        )
+    def _generate(temperature):
+        with torch.no_grad():
+            outputs = model.generate(
+                **inputs,
+                max_new_tokens=512,
+                temperature=temperature,
+                do_sample=True,
+                repetition_penalty=1.15,
+                no_repeat_ngram_size=5,
+                pad_token_id=tokenizer.eos_token_id,
+            )
+        return tokenizer.decode(outputs[0][input_len:], skip_special_tokens=True)
 
-    result = tokenizer.decode(outputs[0][input_len:], skip_special_tokens=True)
+    # 修改3：首次生成 + 失败检测 + 重试
+    result = _generate(0.7)
     print("\n===== 模型原始输出 =====\n", result, "\n=========================\n")
+
+    # 失败条件：含原文片段（未摘要）或 无分隔符
+    if text[:100] in result or ("行为关键词" not in result and "关键词" not in result):
+        print("⚠️ 首次生成异常，降温度重试...")
+        result = _generate(0.3)
+        print("\n===== 重试输出 =====\n", result, "\n=========================\n")
 
     summary = ""
     keywords = []
@@ -74,6 +86,7 @@ def analyze_text(text: str):
             kw_block = re.sub(r'^[：:\s\n\r]*', '', kw_block)
             kw_block = kw_block.split('\n\n')[0] if '\n\n' in kw_block else kw_block
 
+            # 修改2+5：逐行解析 + 去重 + 格式校验（含:或>10字跳过）
             found = []
             for line in kw_block.strip().split('\n'):
                 line = line.strip()
@@ -81,11 +94,23 @@ def analyze_text(text: str):
                     continue
                 kw = re.sub(r'^\s*\d+\s*[.、)）\s]\s*', '', line)
                 kw = kw.split('。')[0].strip()
-                if kw and len(kw) <= 20 and kw not in found:
+                if kw and len(kw) <= 10 and '：' not in kw and ':' not in kw and kw not in found:
                     found.append(kw)
 
-            keywords = found if len(found) >= 2 else [kw.strip() for kw in re.split(r'[、，,]', kw_block) if kw.strip() and len(kw.strip()) <= 20]
+            # 修改2：行解析不足时按标点二次切分 + 去重
+            if len(found) < 2:
+                found = []
+                for kw in re.split(r'[、，,\n]', kw_block):
+                    kw = kw.strip()
+                    if kw and len(kw) <= 10 and '：' not in kw and ':' not in kw and kw not in found:
+                        found.append(kw)
+
+            keywords = found
             break
+
+    # 修改2：截断到 8 个
+    if len(keywords) > 8:
+        keywords = keywords[:8]
 
     if not summary:
         summary = result.strip()[:300]

@@ -1,4 +1,4 @@
-﻿# 有声小说批量分析系统
+# 有声小说批量分析系统
 
 基于本地 GPU（RTX 4060 8GB）的有声小说批量分析系统，实现从音频文件到结构化剧情摘要与行为标签的自动化流水线，并提供 Web 图形界面操作。
 
@@ -14,7 +14,7 @@
 ## 系统架构
 
 ```
-audio files → [ASR (faster-whisper)] → transcript cache → [LLM (Qwen2.5-7B)] → .txt output
+audio files → [ASR (faster-whisper)] → transcript cache → [LLM (DarkIdol-Llama-3.1-8B-Instruct-1.2-Uncensored)] → .txt output
                     │                                                    │
                cache/ (json)                                       output/ (分析.txt)
 ```
@@ -90,7 +90,7 @@ novel-analyzer/
 ├── core/
 │   ├── asr_engine.py      # ASR 引擎（faster-whisper 封装）
 │   ├── cache_manager.py   # 转写缓存管理（MD5 Key + JSON 存储）
-│   └── llm_engine.py      # LLM 引擎（Qwen2.5-7B 量化推理）
+│   └── llm_engine.py      # LLM 引擎（DarkIdol-Llama-3.1-8B-Instruct-1.2-Uncensored 量化推理）
 ├── templates/
 │   └── index.html         # Web 界面
 ├── models/                # 模型文件目录（已 gitignore）
@@ -109,6 +109,6 @@ novel-analyzer/
 ## 技术栈
 
 - **ASR**: faster-whisper, CTranslate2
-- **LLM**: Qwen2.5-7B-Instruct, transformers + bitsandbytes 4-bit
+- **LLM**: DarkIdol-Llama-3.1-8B-Instruct-1.2-Uncensored, transformers + bitsandbytes 4-bit
 - **框架**: Flask
 - **GPU**: CUDA 12.1, PyTorch
